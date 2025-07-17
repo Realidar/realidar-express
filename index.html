@@ -1,54 +1,303 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REALIDAR | Laboratorio Creativo</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    html, body {
-      width: 100%;
-      height: 100%;
-      font-family: 'Segoe UI', sans-serif;
-      color: white;
-      overflow: hidden;
-    }
-    body {
-      background: url('FondoPantallaAncha.png') no-repeat center center;
-      background-size: cover;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 2rem;
-    }
-    .container {
-      background-color: rgba(0, 0, 0, 0.6);
-      padding: 2rem;
-      border-radius: 1rem;
-      max-width: 800px;
-    }
-    h1 {
-      font-size: 2.5rem;
-      margin-bottom: 1rem;
-    }
-    p {
-      font-size: 1.2rem;
-      line-height: 1.6;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>REALIDAR</h1>
-    <p>
-      Creamos experiencias inmersivas en realidad aumentada, con un nivel técnico y visual que fusiona tecnología, narrativa y emoción. <br><br>
-      Este es el primer paso para una nueva forma de interactuar con el mundo.
-    </p>
-  </div>
-</body>
+<!doctype html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no'>
+    <meta name='mobile-web-app-capable' content='yes'>
+    <meta name='apple-mobile-web-app-capable' content='yes'>
+    <link rel='stylesheet' href='css/common.css'>
+    <title>REALIDAR 17_5</title>
+
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: sans-serif;
+      }
+
+      #welcomeScreen {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background: url('media/images/welcome-bg.png') no-repeat center center;
+        background-size: cover;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        padding-bottom: 30%;
+        z-index: 9999;
+      }
+
+      #startExperienceBtn {
+        width: 60%;
+        height: 60px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+      }
+
+      #xrContainer {
+        visibility: hidden;
+        width: 100%;
+        height: 100%;
+      }
+
+      #arControls {
+        position: absolute;
+        bottom: 20px;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        z-index: 999999;
+        pointer-events: auto;
+        visibility: hidden;
+      }
+
+      #arControls button {
+        padding: 12px 20px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        background-color: rgba(255, 255, 255, 0.9);
+        color: #000;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        backdrop-filter: blur(4px);
+      }
+
+      #arControls button:hover {
+        background-color: #00ffff;
+        color: #000;
+      }
+
+      /* Advertencia para desktop */
+      #desktopWarning {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #000;
+        background-image: url('media/images/solo-movil.png');
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-size: contain;
+        z-index: 10000;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Pantalla de bienvenida -->
+    <div id="welcomeScreen">
+      <button id="startExperienceBtn"></button>
+    </div>
+
+    <!-- Contenedor WebXR -->
+    <div id="xrContainer"></div>
+
+    <!-- Menú flotante -->
+    <div id="arControls" style="display: none;">
+      <button id="restartBtn">🔄 Reiniciar</button>
+      <button id="exitBtn">❌ Salir</button>
+    </div>
+
+    <!-- Advertencia para desktop -->
+    <div id="desktopWarning"></div>
+
+    <script type="module">
+      import { Scene } from './js/render/scenes/scene.js';
+      import { Renderer, createWebGLContext } from './js/render/core/renderer.js';
+      import { Node } from './js/render/core/node.js';
+      import { Gltf2Node } from './js/render/nodes/gltf2.js';
+      import { DropShadowNode } from './js/render/nodes/drop-shadow.js';
+      import { vec3 } from './js/render/math/gl-matrix.js';
+
+      let xrSession = null;
+      let xrSessionEnded = true;
+
+      let xrRefSpace = null;
+      let xrViewerSpace = null;
+      let xrHitTestSource = null;
+      let gl = null;
+      let renderer = null;
+      let scene = new Scene();
+      scene.enableStats(false);
+
+      let insertedObject = null;
+      let allowPlacement = true;
+
+      const xrContainer = document.getElementById('xrContainer');
+      const controls = document.getElementById('arControls');
+
+      let reticle = new Gltf2Node({url: 'media/gltf/reticle/reticle.gltf'});
+      reticle.visible = false;
+      scene.addNode(reticle);
+
+      scene.clear = false;
+
+      // Detectar si es un dispositivo móvil
+      function isMobile() {
+        return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      }
+
+      // Mostrar advertencia si NO es móvil
+      if (!isMobile()) {
+        document.getElementById('desktopWarning').style.display = 'block';
+        document.getElementById('welcomeScreen').style.display = 'none';
+      }
+
+      document.getElementById('startExperienceBtn').addEventListener('click', async () => {
+        if (!xrSessionEnded) {
+          console.warn("Ya hay una sesión AR activa. Espera a que finalice.");
+          return;
+        }
+
+        if (!navigator.xr) {
+          alert('WebXR no es compatible en este dispositivo');
+          return;
+        }
+
+        const supported = await navigator.xr.isSessionSupported('immersive-ar');
+        if (!supported) {
+          alert('La realidad aumentada no está disponible');
+          return;
+        }
+
+        try {
+          history.pushState(null, '', location.href);
+          const session = await navigator.xr.requestSession('immersive-ar', {
+            requiredFeatures: ['local', 'hit-test'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: document.body }
+          });
+
+          xrSessionEnded = false;
+          document.getElementById('welcomeScreen').style.display = 'none';
+          xrContainer.style.visibility = 'visible';
+
+          startARSession(session);
+        } catch (e) {
+          alert('Error al iniciar la experiencia AR: ' + e);
+        }
+      });
+
+      function startARSession(session) {
+        xrSession = session;
+
+        session.addEventListener('end', () => {
+          xrHitTestSource?.cancel();
+          xrHitTestSource = null;
+          xrSessionEnded = true;
+        });
+
+        session.addEventListener('select', onSelect);
+
+        if (!gl) {
+          gl = createWebGLContext({ xrCompatible: true });
+          renderer = new Renderer(gl);
+          scene.setRenderer(renderer);
+        }
+
+        session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+
+        session.requestReferenceSpace('viewer').then((refSpace) => {
+          xrViewerSpace = refSpace;
+          session.requestHitTestSource({ space: xrViewerSpace }).then((hitTestSource) => {
+            xrHitTestSource = hitTestSource;
+          });
+        });
+
+        session.requestReferenceSpace('local').then((refSpace) => {
+          xrRefSpace = refSpace;
+          session.requestAnimationFrame((t, f) => onXRFrame(t, f, session));
+        });
+      }
+
+      function onSelect(event) {
+        if (reticle.visible && !insertedObject && allowPlacement) {
+          insertedObject = new Node();
+          insertedObject.visible = true;
+
+          const newFlower = new Gltf2Node({url: 'media/gltf/sunflower/sunflower.gltf'});
+          const newShadow = new DropShadowNode();
+          vec3.set(newShadow.scale, 0.15, 0.15, 0.15);
+
+          insertedObject.addNode(newFlower);
+          insertedObject.addNode(newShadow);
+          insertedObject.matrix = reticle.matrix;
+
+          scene.addNode(insertedObject);
+
+          controls.style.removeProperty('display');
+          controls.style.visibility = 'visible';
+
+          allowPlacement = false;
+        }
+      }
+
+      function resetExperience() {
+        if (insertedObject) {
+          scene.removeNode(insertedObject);
+          insertedObject = null;
+        }
+
+        allowPlacement = true;
+        controls.style.visibility = 'hidden';
+        reticle.visible = false;
+
+        requestAnimationFrame(() => {
+          console.log("Experiencia reiniciada. Puedes volver a colocar el objeto.");
+        });
+      }
+
+      function exitExperience() {
+        if (xrSession) {
+          xrSession.end();
+          xrSession = null;
+        }
+
+        xrContainer.style.visibility = 'hidden';
+        controls.style.visibility = 'hidden';
+        document.getElementById('welcomeScreen').style.display = 'flex';
+
+        if (insertedObject) {
+          scene.removeNode(insertedObject);
+          insertedObject = null;
+        }
+
+        allowPlacement = true;
+        reticle.visible = false;
+      }
+
+      function onXRFrame(t, frame, session) {
+        const pose = frame.getViewerPose(xrRefSpace);
+        reticle.visible = false;
+
+        if (xrHitTestSource && pose) {
+          const hits = frame.getHitTestResults(xrHitTestSource);
+          if (hits.length > 0) {
+            const hitPose = hits[0].getPose(xrRefSpace);
+            reticle.visible = true;
+            reticle.matrix = hitPose.transform.matrix;
+          }
+        }
+
+        scene.startFrame();
+        session.requestAnimationFrame((t, f) => onXRFrame(t, f, session));
+        scene.drawXRFrame(frame, pose);
+        scene.endFrame();
+      }
+
+      document.getElementById('restartBtn').addEventListener('click', resetExperience);
+      document.getElementById('exitBtn').addEventListener('click', exitExperience);
+    </script>
+  </body>
 </html>
