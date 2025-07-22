@@ -240,6 +240,8 @@
           controls.style.visibility = 'visible';
 
           allowPlacement = false;
+
+          animateScaleUp(newFlower);
         }
       }
 
@@ -276,6 +278,27 @@
         allowPlacement = true;
         reticle.visible = false;
       }
+
+      function animateScaleUp(node, target = [1, 1, 1], duration = 300) {
+  const steps = 30;
+  let currentStep = 0;
+  const initial = [0.001, 0.001, 0.001];
+  const delta = target.map((v, i) => (v - initial[i]) / steps);
+
+  function step() {
+    currentStep++;
+    node.scale = node.scale.map((v, i) => v + delta[i]);
+    if (currentStep < steps) {
+      requestAnimationFrame(step);
+    } else {
+      node.scale = [...target];
+    }
+  }
+
+  node.scale = [...initial];
+  step();
+}
+
 
       function onXRFrame(t, frame, session) {
         const pose = frame.getViewerPose(xrRefSpace);
